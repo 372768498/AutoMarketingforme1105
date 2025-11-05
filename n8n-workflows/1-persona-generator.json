@@ -1,0 +1,93 @@
+{
+  "name": "Persona Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-persona",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "x-api-key",
+          "value": "={{$env[\"CLAUDE_API_KEY\"]}}"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 4096,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"你是一位资深的市场研究专家。请为以下产品生成详细的用户画像。\\n\\n产品信息:\\n- 名称: {{$json.productName}}\\n- 描述: {{$json.productDescription}}\\n- 类型: {{$json.productType}}\\n- 目标市场: {{$json.targetMarkets.join(', ')}}\\n\\n请生成3-5个不同的用户画像，每个画像包括：\\n1. 基本信息（年龄、性别、地理位置、职业）\\n2. 心理特征（价值观、生活方式、兴趣）\\n3. 行为特征（常用平台、内容偏好、购买决策因素）\\n4. 痛点和需求\\n\\n请以JSON格式返回：{\\\"personas\\\": [{\\\"name\\\": \\\"...\\\", \\\"demographics\\\": {...}, \\\"psychographics\\\": {...}, \\\"platforms\\\": [...], \\\"content_preferences\\\": {...}, \\\"buying_triggers\\\": [...]}]}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "claude_api_call",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsonPath": "$.content[0].text"
+      },
+      "id": "parse_json",
+      "name": "Parse JSON",
+      "type": "n8n-nodes-base.jsonExtract",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"NEXT_PUBLIC_APP_URL\"]}}/api/personas",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{$env[\"API_KEY\"]}}"
+        },
+        "body": "{\n  \"productId\": \"{{$json.productId}}\",\n  \"personas\": {{$json}}\n}",
+        "options": {}
+      },
+      "id": "save_to_database",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {},
+      "id": "return_response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [[{ "node": "claude_api_call", "branch": 0, "type": "main" }]]
+    },
+    "claude_api_call": {
+      "main": [[{ "node": "parse_json", "branch": 0, "type": "main" }]]
+    },
+    "parse_json": {
+      "main": [[{ "node": "save_to_database", "branch": 0, "type": "main" }]]
+    },
+    "save_to_database": {
+      "main": [[{ "node": "return_response", "branch": 0, "type": "main" }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1",
+  "id": "1"
+}

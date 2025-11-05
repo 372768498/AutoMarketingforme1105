@@ -1,0 +1,93 @@
+{
+  "name": "Market Analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-market",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "x-api-key",
+          "value": "={{$env[\"CLAUDE_API_KEY\"]}}"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 4096,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"你是一位资深的市场分析师。请为以下产品在特定市场进行深度分析。\\n\\n产品信息:\\n- 名称: {{$json.productName}}\\n- 描述: {{$json.productDescription}}\\n- 类型: {{$json.productType}}\\n\\n目标市场: {{$json.market}}\\n\\n请分析以下方面：\\n\\n1. **市场趋势**\\n   - 当前市场规模和增长率\\n   - 主要趋势和变化\\n   - 未来3-5年预测\\n\\n2. **竞争对手分析**\\n   - 识别3-5个主要竞争对手\\n   - 每个竞争对手的优势和劣势\\n   - 市场份额分布\\n\\n3. **市场机会**\\n   - 未被满足的需求\\n   - 竞争空白点\\n   - 进入市场的最佳时机\\n\\n4. **关键词研究**\\n   - 20-30个高价值关键词\\n   - 每个关键词的：\\n     * 搜索意图\\n     * 竞争难度\\n     * 推荐优先级\\n\\n5. **内容策略建议**\\n   - 应该创作什么类型的内容\\n   - 内容发布频率建议\\n   - 内容分发渠道建议\\n\\n请以JSON格式返回完整的分析结果。\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "claude_api_call",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsonPath": "$.content[0].text"
+      },
+      "id": "parse_json",
+      "name": "Parse JSON",
+      "type": "n8n-nodes-base.jsonExtract",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"NEXT_PUBLIC_APP_URL\"]}}/api/market-analysis",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{$env[\"API_KEY\"]}}"
+        },
+        "body": "{\n  \"productId\": \"{{$json.productId}}\",\n  \"market\": \"{{$json.market}}\",\n  \"analysis\": {{$json}}\n}",
+        "options": {}
+      },
+      "id": "save_to_database",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {},
+      "id": "return_response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [[{ "node": "claude_api_call", "branch": 0, "type": "main" }]]
+    },
+    "claude_api_call": {
+      "main": [[{ "node": "parse_json", "branch": 0, "type": "main" }]]
+    },
+    "parse_json": {
+      "main": [[{ "node": "save_to_database", "branch": 0, "type": "main" }]]
+    },
+    "save_to_database": {
+      "main": [[{ "node": "return_response", "branch": 0, "type": "main" }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1",
+  "id": "2"
+}

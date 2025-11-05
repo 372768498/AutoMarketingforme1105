@@ -1,0 +1,143 @@
+{
+  "name": "Content Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-content",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "x-api-key",
+          "value": "={{$env[\"CLAUDE_API_KEY\"]}}"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 4096,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"你是一位专业的营销文案写手。请为以下产品生成优化的营销内容。\\n\\n产品信息:\\n- 名称: {{$json.productName}}\\n- 描述: {{$json.productDescription}}\\n\\n用户画像:\\n- 名称: {{$json.personaName}}\\n- 特征: {{$json.personaDescription}}\\n\\n内容类型: {{$json.contentType}}\\n目标关键词: {{$json.keywords.join(', ')}}\\n\\n请生成{{$json.contentType}}内容，要求：\\n1. 针对{{$json.contentType}}格式优化（长度、语气、结构）\\n2. 自然融入目标关键词\\n3. 包含清晰的行动号召\\n4. 符合用户画像的喜好\\n5. SEO优化但不生硬\\n\\n对于{{$json.contentType}}:\\n\"\n      + (\"{{$json.contentType}}\" === \"blog\" ? \"- 长度：800-1500字\\n- 结构：标题、摘要、正文（多个小标题）、结论\\n- 风格：专业、信息性、具有权威性\" : \"\")\n      + (\"{{$json.contentType}}\" === \"social\" ? \"- 长度：100-280字\\n- 结构：开头、主要信息、行动号召、相关emoji\\n- 风格：轻松、吸引人、容易分享\" : \"\")\n      + (\"{{$json.contentType}}\" === \"email\" ? \"- 长度：200-500字\\n- 结构：主题行、开头、主要信息、行动号召\\n- 风格：个性化、说服力强、清晰的价值主张\" : \"\")\n      + \"\\n\\n请返回JSON格式：{\\\"title\\\": \\\"...\\\", \\\"content\\\": \\\"...\\\", \\\"seoKeywords\\\": [...], \\\"callToAction\\\": \\\"...\\\"}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "claude_api_call",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsonPath": "$.content[0].text"
+      },
+      "id": "parse_json",
+      "name": "Parse JSON",
+      "type": "n8n-nodes-base.jsonExtract",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "x-api-key",
+          "value": "={{$env[\"CLAUDE_API_KEY\"]}}"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "{\n  \"model\": \"claude-3-5-sonnet-20241022\",\n  \"max_tokens\": 1000,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"请分析以下内容的SEO质量和可读性。返回JSON格式：{\\\"seoScore\\\": 0-100, \\\"readabilityScore\\\": 0-100, \\\"analysis\\\": \\\"...\\\"}\\n\\n内容:\\n{{$json.content}}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "analyze_content",
+      "name": "Analyze Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 450]
+    },
+    {
+      "parameters": {
+        "jsonPath": "$.content[0].text"
+      },
+      "id": "parse_analysis",
+      "name": "Parse Analysis",
+      "type": "n8n-nodes-base.jsonExtract",
+      "typeVersion": 1,
+      "position": [650, 450]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    \"content\": $json.parse_json,\n    \"analysis\": $json.parse_analysis,\n    \"generatedAt\": new Date().toISOString()\n  }\n]"
+      },
+      "id": "merge_results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 375]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env[\"NEXT_PUBLIC_APP_URL\"]}}/api/content",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{$env[\"API_KEY\"]}}"
+        },
+        "body": "{\n  \"productId\": \"{{$json.productId}}\",\n  \"personaId\": \"{{$json.personaId}}\",\n  \"contentType\": \"{{$json.contentType}}\",\n  \"title\": \"{{$json.content.title}}\",\n  \"content\": \"{{$json.content.content}}\",\n  \"keywords\": {{$json.content.seoKeywords}},\n  \"seoScore\": {{$json.analysis.seoScore}},\n  \"readabilityScore\": {{$json.analysis.readabilityScore}},\n  \"callToAction\": \"{{$json.content.callToAction}}\"\n}",
+        "options": {}
+      },
+      "id": "save_to_database",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 375]
+    },
+    {
+      "parameters": {},
+      "id": "return_response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 375]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [[{ "node": "claude_api_call", "branch": 0, "type": "main" }]]
+    },
+    "claude_api_call": {
+      "main": [[{ "node": "parse_json", "branch": 0, "type": "main" }]]
+    },
+    "parse_json": {
+      "main": [[{ "node": "analyze_content", "branch": 0, "type": "main" }]]
+    },
+    "analyze_content": {
+      "main": [[{ "node": "parse_analysis", "branch": 0, "type": "main" }]]
+    },
+    "parse_analysis": {
+      "main": [[{ "node": "merge_results", "branch": 0, "type": "main" }]]
+    },
+    "merge_results": {
+      "main": [[{ "node": "save_to_database", "branch": 0, "type": "main" }]]
+    },
+    "save_to_database": {
+      "main": [[{ "node": "return_response", "branch": 0, "type": "main" }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1",
+  "id": "3"
+}
